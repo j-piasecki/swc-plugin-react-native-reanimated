@@ -1,11 +1,13 @@
 use std::collections::{HashMap, VecDeque};
 use swc_ecmascript::{ast::*, visit::{Visit, VisitWith}};
 use swc_common::{DUMMY_SP};
+use crate::constants::{BLACKLISTED_FUNCTIONS, GLOBALS};
 
 #[derive(Debug)]
 pub struct ClosureGeneratorVisitor {
     inside_member_expression: bool,
     inside_assign_expression: bool,
+    inside_computed_prop: bool,
     inside_declarator: bool,
     current_ident: Option<IdentPath>,
     declared_identifiers: Vec<String>,
@@ -17,6 +19,7 @@ impl ClosureGeneratorVisitor {
         ClosureGeneratorVisitor {
             inside_assign_expression: false,
             inside_member_expression: false,
+            inside_computed_prop: false,
             inside_declarator: false,
             current_ident: None,
             declared_identifiers: Vec::new(),
@@ -45,7 +48,7 @@ impl Visit for ClosureGeneratorVisitor {
             self.declared_identifiers.push(n.sym.to_string())
         } else if self.inside_member_expression {
             if let Some(ident_path) = &mut self.current_ident {
-                ident_path.push(n.clone());
+                ident_path.push(n.clone(), self.inside_computed_prop);
             } else {
                 self.current_ident = Some(IdentPath::new(n.clone()));
             }
@@ -103,6 +106,13 @@ impl Visit for ClosureGeneratorVisitor {
         n.value.visit_with(self);
     }
 
+    fn visit_computed_prop_name(&mut self, n: &ComputedPropName) {
+        let old = self.inside_computed_prop;
+        self.inside_computed_prop = true;
+        n.visit_children_with(self);
+        self.inside_computed_prop = old;
+    }
+
     // fn visit_expr(&mut self, n: &Expr) {
     //     println!("begin expression");
     //     n.visit_children_with(self);
@@ -117,11 +127,11 @@ struct IdentPath {
 
 impl IdentPath {
     pub fn new(ident: Ident) -> Self {
-        IdentPath { path: VecDeque::from_iter([IdentRef { name: ident.sym.to_string(), ident: ident }]) }
+        IdentPath { path: VecDeque::from_iter([IdentRef { name: ident.sym.to_string(), ident: ident, computed: false }]) }
     }
 
-    pub fn push(&mut self, ident: Ident) {
-        self.path.push_back(IdentRef { name: ident.sym.to_string(), ident: ident });
+    pub fn push(&mut self, ident: Ident, is_computed: bool) {
+        self.path.push_back(IdentRef { name: ident.sym.to_string(), ident: ident, computed: is_computed });
     }
 
     pub fn pop_latest(&mut self) -> Option<IdentRef> {
@@ -145,6 +155,7 @@ impl IdentPath {
 struct IdentRef {
     name: String,
     ident: Ident,
+    computed: bool,
 }
 
 #[derive(Debug)]
@@ -173,6 +184,10 @@ impl ClosureTrie {
             return;
         };
 
+        if GLOBALS.iter().any(|x| { *x == current.name }) {
+            return;
+        }
+
         let parent = self.nodes.entry(current.name.clone()).or_insert(ClosureTrie::new(Some(current)));
         parent.add_path(path);
     }
@@ -188,7 +203,7 @@ impl ClosureTrie {
             };
 
             path.push(ident.clone());
-            let value = if trie.is_leaf {
+            let value = if trie.is_leaf || trie.should_be_captured_whole() {
                 ClosureTrie::path_to_expr(path.clone())
             } else {
                 Expr::Object(ObjectLit {
@@ -205,6 +220,20 @@ impl ClosureTrie {
         }
 
         return result;
+    }
+
+    fn should_be_captured_whole(&self) -> bool {
+        for (name, trie) in self.nodes.iter() {
+            if let Some(ident) = &trie.ident {
+                if ident.computed {
+                    return true;
+                }
+            }
+
+            return name == "value" || BLACKLISTED_FUNCTIONS.iter().any(|x| { *x == name });
+        }
+
+        false
     }
 
     fn path_to_expr(mut path: Vec<Ident>) -> Expr {
