@@ -13,7 +13,7 @@ use swc_ecmascript::{
     visit::{VisitMut, VisitMutWith, VisitWith},
 };
 
-use super::{OptimizationFinderVisitor, ClosureIdentVisitor, DirectiveFinderVisitor};
+use super::{OptimizationFinderVisitor, ClosureIdentVisitor, DirectiveFinderVisitor, ClosureGeneratorVisitor};
 
 pub struct ReanimatedWorkletsVisitor<
     C: Clone + swc_common::comments::Comments,
@@ -217,6 +217,11 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
         );
         cloned.visit_children_with(&mut closure_visitor);
 
+        let mut closure_generator_visitor = ClosureGeneratorVisitor::new();
+        body.visit_with(&mut closure_generator_visitor);
+
+        let closure = closure_generator_visitor.build();
+
         let closure_ident = Ident::new("_closure".into(), DUMMY_SP);
         let as_string_ident = Ident::new("asString".into(), DUMMY_SP);
         let worklet_hash_ident = Ident::new("__workletHash".into(), DUMMY_SP);
@@ -254,7 +259,6 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
         let code_location = format!("{} ({}:{})", filename_str, loc.line, loc.col_display);
 
         // TODO: need to use closuregenerator
-        let dummy_closure = Expr::Object(ObjectLit::dummy());
 
         let decorators = if let Some(decorators) = decorators {
             decorators
@@ -335,7 +339,7 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
                         prop: MemberProp::Ident(closure_ident.clone()),
                     }))),
                     // TODO: this is not complete
-                    right: Box::new(dummy_closure.clone()),
+                    right: Box::new(closure.clone()),
                 })),
             }),
             // _f.asString
