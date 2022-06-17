@@ -51,7 +51,7 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
 
     /// Print givne fn's string with writer.
     /// This should be called with `cloned` node, as internally this'll take ownership.
-    fn build_worklet_string(&mut self, fn_name: Ident, expr: Expr, closure_ident: Ident) -> String {
+    fn build_worklet_string(&mut self, fn_name: Ident, expr: Expr, closure_ident: Ident, closure_generator: ClosureGeneratorVisitor) -> String {
         let (params, body) = match expr {
             Expr::Arrow(mut arrow_expr) => (
                 arrow_expr.params.drain(..).map(Param::from).collect(),
@@ -80,8 +80,9 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
             },
         };
 
-        /*
-        if variables.len() > 0 {
+        
+        if closure_generator.size() > 0 {
+            let variables = closure_generator.get_variables();
             let mut vars = variables.iter().collect::<Vec<_>>();
             // TODO: this is to match snapshot with deterministic visitor results
             vars.sort_by(|a, b| b.sym.cmp(&a.sym));
@@ -118,12 +119,14 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
                 ..VarDecl::dummy()
             }));
 
-            let old_stmts = body.stmts;
-            let mut new_stmts = vec![s];
-            new_stmts.extend(old_stmts);
-            body.stmts = new_stmts;
+            let old = Stmt::Block(BlockStmt {
+                span: DUMMY_SP,
+                stmts: body.stmts,
+            });
+
+            body.stmts = vec![s, old];
         };
-         */
+
 
         let transformed_function = FnExpr {
             ident: Some(fn_name),
@@ -229,7 +232,7 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
         let optimalization_ident = Ident::new("__optimalization".into(), DUMMY_SP);
 
         let func_string =
-            self.build_worklet_string(function_name.clone(), cloned, closure_ident.clone());
+            self.build_worklet_string(function_name.clone(), cloned, closure_ident.clone(), closure_generator_visitor);
         let func_hash = calculate_hash(&func_string);
 
         /*

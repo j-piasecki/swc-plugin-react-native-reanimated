@@ -36,6 +36,19 @@ impl ClosureGeneratorVisitor {
         })
     }
 
+    pub fn size(&self) -> usize {
+        self.trie.nodes.len()
+    }
+
+    pub fn get_variables(&self) -> Vec<Ident> {
+        self.trie.nodes.iter().filter_map(|(_, node)| {
+            if let Some(ident) = &node.ident {
+                return Some(ident.ident.clone());
+            }
+            None
+        }).collect()
+    }
+
     pub fn print(&mut self) {
         println!("declared: {:#?}", self.declared_identifiers);
         println!("referenced: {:#?}", self.trie);
