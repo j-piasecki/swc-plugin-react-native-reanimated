@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use swc_common::Mark;
 
-use crate::{constants::{GESTURE_HANDLER_GESTURE_OBJECTS, OBJECT_HOOKS, FUNCTION_ARGS_TO_WORKLETIZE, GESTURE_HANDLER_BUILDER_METHODS}, utils::{Scope, ScopeKind, get_callee_expr_ident}, calculate_hash};
+use crate::{constants::{GESTURE_HANDLER_GESTURE_OBJECTS, OBJECT_HOOKS, FUNCTION_ARGS_TO_WORKLETIZE, GESTURE_HANDLER_BUILDER_METHODS}, utils::{Scope, ScopeKind, get_callee_expr_ident, ClosureGenerator}, calculate_hash};
 use swc_common::{util::take::Take, FileName, Span, DUMMY_SP};
 use swc_ecma_codegen::{self, text_writer::WriteJs, Emitter, Node};
 use swc_ecma_transforms_compat::{
@@ -13,7 +13,7 @@ use swc_ecmascript::{
     visit::{VisitMut, VisitMutWith, VisitWith},
 };
 
-use super::{OptimizationFinderVisitor, ClosureIdentVisitor, DirectiveFinderVisitor, ClosureGeneratorVisitor};
+use super::{OptimizationFinderVisitor, ClosureIdentVisitor, DirectiveFinderVisitor};
 
 pub struct ReanimatedWorkletsVisitor<
     C: Clone + swc_common::comments::Comments,
@@ -51,7 +51,7 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
 
     /// Print givne fn's string with writer.
     /// This should be called with `cloned` node, as internally this'll take ownership.
-    fn build_worklet_string(&mut self, fn_name: Ident, expr: Expr, closure_ident: Ident, closure_generator: ClosureGeneratorVisitor) -> String {
+    fn build_worklet_string(&mut self, fn_name: Ident, expr: Expr, closure_ident: Ident, closure_generator: ClosureGenerator) -> String {
         let (params, body) = match expr {
             Expr::Arrow(mut arrow_expr) => (
                 arrow_expr.params.drain(..).map(Param::from).collect(),
@@ -220,10 +220,8 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
         );
         cloned.visit_children_with(&mut closure_visitor);
 
-        let mut closure_generator_visitor = ClosureGeneratorVisitor::new();
-        body.visit_with(&mut closure_generator_visitor);
-
-        let closure = closure_generator_visitor.build();
+        let mut closure_generator = closure_visitor.take_generator();
+        let closure = closure_generator.build();
 
         let closure_ident = Ident::new("_closure".into(), DUMMY_SP);
         let as_string_ident = Ident::new("asString".into(), DUMMY_SP);
@@ -232,7 +230,7 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
         let optimalization_ident = Ident::new("__optimalization".into(), DUMMY_SP);
 
         let func_string =
-            self.build_worklet_string(function_name.clone(), cloned, closure_ident.clone(), closure_generator_visitor);
+            self.build_worklet_string(function_name.clone(), cloned, closure_ident.clone(), closure_generator);
         let func_hash = calculate_hash(&func_string);
 
         /*

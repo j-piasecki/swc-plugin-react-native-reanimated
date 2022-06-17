@@ -5,7 +5,7 @@ use swc_ecmascript::{
   visit::{Visit, VisitWith},
 };
 
-use crate::utils::{IdentType, Scope, ScopeKind, VarType, VarInfo, IdentPath};
+use crate::utils::{IdentType, Scope, ScopeKind, VarType, VarInfo, IdentPath, ClosureGenerator};
 
 pub struct ClosureIdentVisitor<'a> {
   outputs: HashSet<Ident>,
@@ -22,6 +22,7 @@ pub struct ClosureIdentVisitor<'a> {
   in_type: bool,
   globals: &'a Vec<String>,
   fn_name: &'a Option<Ident>,
+  closure_generator: ClosureGenerator,
 }
 
 impl<'a> ClosureIdentVisitor<'a> {
@@ -41,6 +42,7 @@ impl<'a> ClosureIdentVisitor<'a> {
           in_type: false,
           globals,
           fn_name,
+          closure_generator: ClosureGenerator::new(),
       }
   }
 
@@ -60,7 +62,12 @@ impl<'a> ClosureIdentVisitor<'a> {
           in_type: false,
           globals: value.globals,
           fn_name: value.fn_name,
+          closure_generator: ClosureGenerator::new(),
       }
+  }
+
+  pub fn take_generator(&mut self) -> ClosureGenerator {
+      std::mem::replace(&mut self.closure_generator, ClosureGenerator::new())
   }
 
   fn visit_stmt_within_child_scope(&mut self, s: &Stmt) {
@@ -100,6 +107,8 @@ impl<'a> ClosureIdentVisitor<'a> {
               ClosureIdentVisitor::from(self, Scope::new(kind, child_mark, Some(&self.scope)));
 
           op(&mut child);
+
+          self.closure_generator.merge(child.closure_generator);
 
           child.scope.bindings
       };
@@ -464,6 +473,8 @@ impl<'a> Visit for ClosureIdentVisitor<'a> {
 
           child.is_in_object_expression = old_in_object_expression;
 
+          self.closure_generator.merge(child.closure_generator);
+
           child.scope.bindings
       };
 
@@ -581,8 +592,10 @@ impl<'a> Visit for ClosureIdentVisitor<'a> {
               }
 
               
-              println!("add {:#?} {:#?}", ident, self.ident_path);
-
+              //println!("add {:#?} {:#?}", ident, self.ident_path);
+              if let Some(path) = self.ident_path.take() {
+                  self.closure_generator.add_path(path);
+              }
               /* TODO
               closure.set(name, path.node);
               closureGenerator.addPath(name, path);

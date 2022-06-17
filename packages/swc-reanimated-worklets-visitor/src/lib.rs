@@ -18,19 +18,6 @@ fn calculate_hash(value: &str) -> f64 {
     fnv.finish32() as f64
 }
 
-//TODO
-struct ClosureGenerator {}
-
-impl ClosureGenerator {
-    pub fn new() -> Self {
-        ClosureGenerator {}
-    }
-
-    pub fn add_path(&mut self) {
-        // not implemented
-    }
-}
-
 pub fn create_worklets_visitor<
     C: Clone + swc_common::comments::Comments,
     S: swc_common::SourceMapper + SourceMapperExt,

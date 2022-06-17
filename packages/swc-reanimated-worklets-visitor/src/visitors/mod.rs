@@ -4,7 +4,5 @@ mod directive_finder_visitor;
 pub use directive_finder_visitor::DirectiveFinderVisitor;
 mod closure_ident_visitor;
 pub use closure_ident_visitor::ClosureIdentVisitor;
-mod closure_generator_visitor;
-pub use closure_generator_visitor::ClosureGeneratorVisitor;
 mod reanimated_workles_visitor;
 pub use reanimated_workles_visitor::{ReanimatedWorkletsVisitor, WorkletsOptions};
