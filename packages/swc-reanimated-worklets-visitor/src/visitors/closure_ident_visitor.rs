@@ -1,21 +1,23 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, cell::RefCell};
 use swc_common::Mark;
 use swc_ecmascript::{
   ast::*,
   visit::{Visit, VisitWith},
 };
 
-use crate::utils::{IdentType, Scope, ScopeKind, VarType, VarInfo};
+use crate::utils::{IdentType, Scope, ScopeKind, VarType, VarInfo, IdentPath};
 
 pub struct ClosureIdentVisitor<'a> {
   outputs: HashSet<Ident>,
   is_parent_member_expr: bool,
-  is_parent_member_expr_computed: bool,
+  is_member_expr_computed: bool,
   is_in_object_expression: bool,
   is_in_object_prop: bool,
   parent_member_expr_prop_ident: Option<Ident>,
   parent_object_prop_ident: Option<Ident>,
   ident_type: Option<IdentType>,
+  var_decl_kind: Option<VarDeclKind>,
+  ident_path: Option<IdentPath>,
   scope: Scope<'a>,
   in_type: bool,
   globals: &'a Vec<String>,
@@ -27,13 +29,15 @@ impl<'a> ClosureIdentVisitor<'a> {
       ClosureIdentVisitor {
           outputs: Default::default(),
           is_parent_member_expr: false,
-          is_parent_member_expr_computed: false,
+          is_member_expr_computed: false,
           is_in_object_expression: false,
           is_in_object_prop: false,
           parent_member_expr_prop_ident: Default::default(),
           parent_object_prop_ident: Default::default(),
           scope: current,
           ident_type: None,
+          var_decl_kind: None,
+          ident_path: None,
           in_type: false,
           globals,
           fn_name,
@@ -44,13 +48,15 @@ impl<'a> ClosureIdentVisitor<'a> {
       ClosureIdentVisitor {
           outputs: value.outputs.clone(),
           is_parent_member_expr: value.is_parent_member_expr,
-          is_parent_member_expr_computed: value.is_parent_member_expr_computed,
+          is_member_expr_computed: value.is_member_expr_computed,
           is_in_object_expression: value.is_in_object_expression,
           is_in_object_prop: value.is_in_object_prop,
           parent_member_expr_prop_ident: value.parent_member_expr_prop_ident.clone(),
           parent_object_prop_ident: value.parent_object_prop_ident.clone(),
           scope: current,
           ident_type: value.ident_type.clone(),
+          var_decl_kind: value.var_decl_kind.clone(),
+          ident_path: None,
           in_type: false,
           globals: value.globals,
           fn_name: value.fn_name,
@@ -115,26 +121,38 @@ impl<'a> ClosureIdentVisitor<'a> {
           }
       }
   }
+
+  fn add_to_path(&mut self, ident: Ident) {
+    if let Some(path) = &mut self.ident_path {
+        path.add(ident.clone());
+    } else {
+        self.ident_path = Some(IdentPath::new(ident.clone()));
+    }
+  }
 }
 
 impl<'a> Visit for ClosureIdentVisitor<'a> {
   fn visit_member_expr(&mut self, member_expr: &MemberExpr) {
-      let old_computed = self.is_parent_member_expr_computed;
+      let mut old_parent_member_expr_prop_ident = None;
+      let old_computed = self.is_member_expr_computed;
       let old = self.is_parent_member_expr;
       if let MemberProp::Computed(..) = member_expr.prop {
-          self.is_parent_member_expr_computed = true;
+          self.is_member_expr_computed = true;
       }
 
       if let MemberProp::Ident(ident) = &member_expr.prop {
+          old_parent_member_expr_prop_ident = self.parent_member_expr_prop_ident.take();
           self.parent_member_expr_prop_ident = Some(ident.clone())
       }
 
       self.is_parent_member_expr = true;
-      member_expr.visit_children_with(self);
 
-      self.parent_member_expr_prop_ident = None;
+      member_expr.prop.visit_with(self);
+      self.is_member_expr_computed = old_computed;
+      member_expr.obj.visit_with(self);
+
+      self.parent_member_expr_prop_ident = old_parent_member_expr_prop_ident;
       self.is_parent_member_expr = old;
-      self.is_parent_member_expr_computed = old_computed;
   }
 
   fn visit_arrow_expr(&mut self, arrow_expr: &ArrowExpr) {
@@ -524,14 +542,20 @@ impl<'a> Visit for ClosureIdentVisitor<'a> {
       }
 
       if self.globals.iter().any(|v| &*ident.sym == v) {
+          self.ident_path = None;
           return;
       }
-
-      if self.is_parent_member_expr && !self.is_parent_member_expr_computed {
-          if let Some(parent_prop_ident) = &self.parent_member_expr_prop_ident {
-              if ident == parent_prop_ident {
-                  return;
+      if self.is_parent_member_expr {
+          if !self.is_member_expr_computed {
+              if let Some(parent_prop_ident) = &self.parent_member_expr_prop_ident {
+                  if ident == parent_prop_ident {
+                      self.add_to_path(ident.clone());
+                      return;
+                  }
               }
+          } else {
+              self.ident_path = None;
+              return;
           }
       }
 
@@ -545,21 +569,40 @@ impl<'a> Visit for ClosureIdentVisitor<'a> {
 
       if let Some(ident_type) = self.ident_type {
           if ident_type == IdentType::Ref {
+              self.add_to_path(ident.clone());
               let mut current_scope = Some(&self.scope);
               while let Some(scope) = current_scope {
                   if scope.bindings.contains_key(&ident.to_id()) {
+                      self.ident_path = None;
                       return;
                   }
 
                   current_scope = scope.parent;
               }
 
+              
+              println!("add {:#?} {:#?}", ident, self.ident_path);
+
               /* TODO
               closure.set(name, path.node);
               closureGenerator.addPath(name, path);
               */
+          } else if ident_type == IdentType::Binding {
+              if let Some(decl_kind) = self.var_decl_kind {
+                  self.scope.bindings.insert(ident.to_id(), VarInfo {
+                      kind: VarType::Var(decl_kind),
+                      value: RefCell::new(None)
+                    });
+              } else {
+                self.scope.bindings.insert(ident.to_id(), VarInfo {
+                    kind: VarType::Param,
+                    value: RefCell::new(None)
+                });
+              }
           }
       }
+
+      self.ident_path = None;
   }
 
   fn visit_assign_expr(&mut self, assign_expr: &AssignExpr) {
@@ -587,5 +630,12 @@ impl<'a> Visit for ClosureIdentVisitor<'a> {
       self.ident_type = old_type;
 
       decl.init.visit_children_with(self);
+  }
+
+  fn visit_var_decl(&mut self, decl: &VarDecl) {
+      let old_kind = self.var_decl_kind;
+      self.var_decl_kind = Some(decl.kind);
+      decl.visit_children_with(self);
+      self.var_decl_kind = old_kind;
   }
 }
