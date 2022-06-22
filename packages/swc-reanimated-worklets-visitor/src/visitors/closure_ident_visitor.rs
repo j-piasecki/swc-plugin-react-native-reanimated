@@ -565,6 +565,9 @@ impl<'a> Visit for ClosureIdentVisitor<'a> {
                   }
               }
           } else {
+              // if the property is computed, we don't want to capture it (and whatever follows it)
+              // i.e. in a.b[c].d.e by setting ident_path to none we discard e and d, meanwhile c is
+              // never added to the path
               self.ident_path = None;
               return;
           }
@@ -592,14 +595,9 @@ impl<'a> Visit for ClosureIdentVisitor<'a> {
               }
 
               
-              //println!("add {:#?} {:#?}", ident, self.ident_path);
               if let Some(path) = self.ident_path.take() {
                   self.closure_generator.add_path(path);
               }
-              /* TODO
-              closure.set(name, path.node);
-              closureGenerator.addPath(name, path);
-              */
           } else if ident_type == IdentType::Binding {
               if let Some(decl_kind) = self.var_decl_kind {
                   self.scope.bindings.insert(ident.to_id(), VarInfo {

@@ -87,8 +87,6 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
             // TODO: this is to match snapshot with deterministic visitor results
             vars.sort_by(|a, b| b.sym.cmp(&a.sym));
 
-            //variables.clear();
-
             let props = vars
                 .drain(..)
                 .map(|variable| {
@@ -232,10 +230,6 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
         let func_string =
             self.build_worklet_string(function_name.clone(), cloned, closure_ident.clone(), closure_generator);
         let func_hash = calculate_hash(&func_string);
-
-        /*
-            const closureGenerator = new ClosureGenerator();
-        */
 
         // Naive approach to calcuate relative path from options.
         // Note this relies on plugin config option (relative_cwd) to pass specific cwd.
