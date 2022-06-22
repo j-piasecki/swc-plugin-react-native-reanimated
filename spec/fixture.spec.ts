@@ -140,7 +140,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
                 offset: offset
             };
             _f.asString = \\"function _f(){const{offset}=jsThis._closure;{return{transform:[{translateX:offset.value*255}]};}}\\";
-            _f.__workletHash = 3775411022;
+            _f.__workletHash = 7114514849439;
             _f.__location = \\"/Users/jakubpiasecki/Projects/swc-plugin-react-native-reanimated/jest tests fixture (10:46)\\";
             _f.__optimalization = 3;
             return _f;
@@ -258,7 +258,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = 'function foo(x){;const bar=\\"worklet\\";const baz=\\"worklet\\";}';
-          _f.__workletHash = 2809676670;
+          _f.__workletHash = 1762569580399;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:6)\\";
           return _f;
       }();
@@ -299,8 +299,193 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
               }
           };
           _f.asString = \\"function f(){const{x,objX}=jsThis._closure;{;return{res:x+objX.x};}}\\";
-          _f.__workletHash = 299431234;
+          _f.__workletHash = 14970312127675;
           _f.__location = \\"${process.cwd()}/jest tests fixture (6:6)\\";
+          return _f;
+      }();
+      "
+      `);
+  });
+
+  it("captures shared values correctly", () => {
+    const input = `
+      const sv = useSharedValue(3);
+
+      function f() {
+        'worklet';
+        return sv.value + 1;
+      }
+    `;
+
+    const { code } = executeTransform(input);
+    expect(code).toMatchInlineSnapshot(`
+      "\\"use strict\\";
+      const sv = useSharedValue(3);
+      const f = function() {
+          const _f = function _f() {
+              ;
+              return sv.value + 1;
+          };
+          _f._closure = {
+              sv: sv
+          };
+          _f.asString = \\"function f(){const{sv}=jsThis._closure;{;return sv.value+1;}}\\";
+          _f.__workletHash = 9774856238509;
+          _f.__location = \\"${process.cwd()}/jest tests fixture (4:6)\\";
+          return _f;
+      }();
+      "
+      `);
+  });
+
+  it("captures computed properties correctly", () => {
+    const input = `
+      const obj = {
+        array: [1, 2, 3],
+      };
+
+      function f() {
+        'worklet';
+        return obj.array[2];
+      }
+    `;
+
+    const { code } = executeTransform(input);
+    expect(code).toMatchInlineSnapshot(`
+      "\\"use strict\\";
+      const obj = {
+          array: [
+              1,
+              2,
+              3
+          ]
+      };
+      const f = function() {
+          const _f = function _f() {
+              ;
+              return obj.array[2];
+          };
+          _f._closure = {
+              obj: {
+                  array: obj.array
+              }
+          };
+          _f.asString = \\"function f(){const{obj}=jsThis._closure;{;return obj.array[2];}}\\";
+          _f.__workletHash = 5400175755057;
+          _f.__location = \\"${process.cwd()}/jest tests fixture (6:6)\\";
+          return _f;
+      }();
+      "
+      `);
+  });
+
+  it("doesn't capture blacklisted functions", () => {
+    const input = `
+      const obj = {
+        array: [1, 2, 3],
+      };
+
+      function f() {
+        'worklet';
+        return obj.array.map((x) => 2 * x);
+      }
+    `;
+
+    const { code } = executeTransform(input);
+    expect(code).toMatchInlineSnapshot(`
+      "\\"use strict\\";
+      const obj = {
+          array: [
+              1,
+              2,
+              3
+          ]
+      };
+      const f = function() {
+          const _f = function _f() {
+              ;
+              return obj.array.map((x)=>2 * x);
+          };
+          _f._closure = {
+              obj: {
+                  array: obj.array
+              }
+          };
+          _f.asString = \\"function f(){const{obj}=jsThis._closure;{;return obj.array.map(function(x){return 2*x;});}}\\";
+          _f.__workletHash = 7720193467578;
+          _f.__location = \\"${process.cwd()}/jest tests fixture (6:6)\\";
+          return _f;
+      }();
+      "
+      `);
+  });
+
+  it("doesn't capture objects passed as arguments", () => {
+    const input = `
+      const obj = {
+        array: [1, 2, 3],
+      };
+
+      function f(obj) {
+        'worklet';
+        return obj.array[2];
+      }
+    `;
+
+    const { code } = executeTransform(input);
+    expect(code).toMatchInlineSnapshot(`
+      "\\"use strict\\";
+      const obj = {
+          array: [
+              1,
+              2,
+              3
+          ]
+      };
+      const f = function() {
+          const _f = function _f(obj1) {
+              ;
+              return obj1.array[2];
+          };
+          _f._closure = {};
+          _f.asString = \\"function f(obj){;return obj.array[2];}\\";
+          _f.__workletHash = 14101791531149;
+          _f.__location = \\"${process.cwd()}/jest tests fixture (6:6)\\";
+          return _f;
+      }();
+      "
+      `);
+  });
+
+  it("doesn't capture `var` variables", () => {
+    const input = `
+      const variable = 1;
+
+      function f() {
+        'worklet';
+        if (false) {
+          var variable = 3;
+        }
+        return variable;
+      }
+    `;
+
+    const { code } = executeTransform(input);
+    expect(code).toMatchInlineSnapshot(`
+      "\\"use strict\\";
+      const variable1 = 1;
+      const f = function() {
+          const _f = function _f() {
+              ;
+              if (false) {
+                  var variable = 3;
+              }
+              return variable;
+          };
+          _f._closure = {};
+          _f.asString = \\"function f(){;if(false){var variable=3;}return variable;}\\";
+          _f.__workletHash = 1248093219723;
+          _f.__location = \\"${process.cwd()}/jest tests fixture (4:6)\\";
           return _f;
       }();
       "
@@ -351,7 +536,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = 'function f(){;console.log(\\"test\\");}';
-          _f.__workletHash = 3585409333;
+          _f.__workletHash = 5089112377006;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:6)\\";
           return _f;
       }();
@@ -381,7 +566,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function foo(x){;return x+2;}\\";
-          _f.__workletHash = 3468386974;
+          _f.__workletHash = 16492128064663;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:6)\\";
           return _f;
       }();
@@ -409,7 +594,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function _f(x){;return x+2;}\\";
-          _f.__workletHash = 3611478349;
+          _f.__workletHash = 4863501127784;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:18)\\";
           return _f;
       }();
@@ -437,7 +622,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function _f(x){;return x+2;}\\";
-          _f.__workletHash = 3611478349;
+          _f.__workletHash = 4863501127784;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:18)\\";
           return _f;
       }();
@@ -465,7 +650,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function foo(x){;return x+2;}\\";
-          _f.__workletHash = 3468386974;
+          _f.__workletHash = 16492128064663;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:18)\\";
           return _f;
       }();
@@ -501,7 +686,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
               };
               _f._closure = {};
               _f.asString = \\"function bar(x){;return x+2;}\\";
-              _f.__workletHash = 2790860375;
+              _f.__workletHash = 10355121906976;
               _f.__location = \\"${process.cwd()}/jest tests fixture (3:8)\\";
               return _f;
           }
@@ -533,7 +718,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
               };
               _f._closure = {};
               _f.asString = \\"function bar(x){;return x+2;}\\";
-              _f.__workletHash = 2790860375;
+              _f.__workletHash = 10355121906976;
               _f.__location = \\"${process.cwd()}/jest tests fixture (3:8)\\";
               return _f;
           }
@@ -567,7 +752,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
                   x: x
               };
               _f.asString = \\"function bar(){const{x}=jsThis._closure;{;return x+2;}}\\";
-              _f.__workletHash = 1686906385;
+              _f.__workletHash = 14841206914396;
               _f.__location = \\"${process.cwd()}/jest tests fixture (3:8)\\";
               return _f;
           }
@@ -598,7 +783,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function _f(){return({width:50});}\\";
-          _f.__workletHash = 3357545625;
+          _f.__workletHash = 8155158744116;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:45)\\";
           _f.__optimalization = 3;
           return _f;
@@ -628,7 +813,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function _f(){return{width:50};}\\";
-          _f.__workletHash = 3061529706;
+          _f.__workletHash = 9756190407413;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:45)\\";
           _f.__optimalization = 3;
           return _f;
@@ -658,7 +843,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function foo(){return{width:50};}\\";
-          _f.__workletHash = 1807769345;
+          _f.__workletHash = 6275510763626;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:45)\\";
           _f.__optimalization = 3;
           return _f;
@@ -689,7 +874,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
             };
             _f._closure = {};
             _f.asString = \\"function _f(event){console.log(event);}\\";
-            _f.__workletHash = 4276664511;
+            _f.__workletHash = 2164830539996;
             _f.__location = \\"${process.cwd()}/jest tests fixture (3:17)\\";
             return _f;
         }()
@@ -718,7 +903,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
               };
               _f._closure = {};
               _f.asString = \\"function _f(event){console.log(event);}\\";
-              _f.__workletHash = 4276664511;
+              _f.__workletHash = 2164830539996;
               _f.__location = \\"${process.cwd()}/jest tests fixture (3:17)\\";
               return _f;
           }()
@@ -747,7 +932,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
               };
               _f._closure = {};
               _f.asString = \\"function onStart(event){console.log(event);}\\";
-              _f.__workletHash = 1675048407;
+              _f.__workletHash = 338158776260;
               _f.__location = \\"${process.cwd()}/jest tests fixture (3:17)\\";
               return _f;
           }()
@@ -776,7 +961,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
               };
               _f._closure = {};
               _f.asString = \\"function onStart(event){console.log(event);}\\";
-              _f.__workletHash = 1675048407;
+              _f.__workletHash = 338158776260;
               _f.__location = \\"${process.cwd()}/jest tests fixture (3:8)\\";
               return _f;
           }
@@ -835,7 +1020,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = 'function _f(){console.log(\\"onBegin\\");}';
-          _f.__workletHash = 498039665;
+          _f.__workletHash = 11722320302202;
           _f.__location = \\"${process.cwd()}/jest tests fixture (6:17)\\";
           return _f;
       }()).onStart(function() {
@@ -844,7 +1029,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = 'function _f(_event){console.log(\\"onStart\\");}';
-          _f.__workletHash = 2816630107;
+          _f.__workletHash = 6526883337326;
           _f.__location = \\"${process.cwd()}/jest tests fixture (9:17)\\";
           return _f;
       }()).onEnd(function() {
@@ -853,7 +1038,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = 'function _f(_event,_success){console.log(\\"onEnd\\");}';
-          _f.__workletHash = 1652342874;
+          _f.__workletHash = 707182796977;
           _f.__location = \\"${process.cwd()}/jest tests fixture (12:15)\\";
           return _f;
       }());
@@ -912,7 +1097,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function foo(){;const bar=[4,5];const baz=[1,...[2,3],...bar];}\\";
-          _f.__workletHash = 601811320;
+          _f.__workletHash = 7879430620561;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:6)\\";
           return _f;
       }();
@@ -951,7 +1136,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function foo(){;const bar={d:4,e:5};const baz={a:1,...{b:2,c:3},...bar};}\\";
-          _f.__workletHash = 505904037;
+          _f.__workletHash = 7714596833770;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:6)\\";
           return _f;
       }();
@@ -977,7 +1162,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function foo(...args){;console.log(args);}\\";
-          _f.__workletHash = 3435132605;
+          _f.__workletHash = 2392598989814;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:6)\\";
           return _f;
       }();
@@ -1003,7 +1188,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
           };
           _f._closure = {};
           _f.asString = \\"function foo(arg){;console.log(...arg);}\\";
-          _f.__workletHash = 1527344131;
+          _f.__workletHash = 14809905795030;
           _f.__location = \\"${process.cwd()}/jest tests fixture (2:6)\\";
           return _f;
       }();

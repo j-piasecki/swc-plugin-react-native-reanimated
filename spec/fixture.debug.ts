@@ -84,7 +84,7 @@ describe.each(transformPresets)("fixture with %s", (_, executeTransform) => {
               }
           };
           _f.asString = \\"function f(){const{x,objX}=jsThis._closure;{;return{res:x+objX.x};}}\\";
-          _f.__workletHash = 299431234;
+          _f.__workletHash = 14970312127675;
           _f.__location = \\"${process.cwd()}/jest tests fixture (6:4)\\";
           return _f;
       }();
