@@ -1,7 +1,14 @@
 use std::path::PathBuf;
 use swc_common::Mark;
 
-use crate::{constants::{GESTURE_HANDLER_GESTURE_OBJECTS, OBJECT_HOOKS, FUNCTION_ARGS_TO_WORKLETIZE, GESTURE_HANDLER_BUILDER_METHODS}, utils::{Scope, ScopeKind, get_callee_expr_ident, ClosureGenerator}, calculate_hash};
+use crate::{
+    calculate_hash,
+    constants::{
+        FUNCTION_ARGS_TO_WORKLETIZE, GESTURE_HANDLER_BUILDER_METHODS,
+        GESTURE_HANDLER_GESTURE_OBJECTS, OBJECT_HOOKS,
+    },
+    utils::{get_callee_expr_ident, ClosureGenerator, Scope, ScopeKind},
+};
 use swc_common::{util::take::Take, FileName, Span, DUMMY_SP};
 use swc_ecma_codegen::{self, text_writer::WriteJs, Emitter, Node};
 use swc_ecma_transforms_compat::{
@@ -13,7 +20,7 @@ use swc_ecmascript::{
     visit::{VisitMut, VisitMutWith, VisitWith},
 };
 
-use super::{OptimizationFinderVisitor, ClosureIdentVisitor, DirectiveFinderVisitor};
+use super::{ClosureIdentVisitor, DirectiveFinderVisitor, OptimizationFinderVisitor};
 
 pub struct ReanimatedWorkletsVisitor<
     C: Clone + swc_common::comments::Comments,
@@ -51,7 +58,13 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
 
     /// Print givne fn's string with writer.
     /// This should be called with `cloned` node, as internally this'll take ownership.
-    fn build_worklet_string(&mut self, fn_name: Ident, expr: Expr, closure_ident: Ident, closure_generator: ClosureGenerator) -> String {
+    fn build_worklet_string(
+        &mut self,
+        fn_name: Ident,
+        expr: Expr,
+        closure_ident: Ident,
+        closure_generator: ClosureGenerator,
+    ) -> String {
         let (params, body) = match expr {
             Expr::Arrow(mut arrow_expr) => (
                 arrow_expr.params.drain(..).map(Param::from).collect(),
@@ -68,7 +81,7 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
             ),
             _ => todo!("unexpected"),
         };
-        
+
         let mut body = match body {
             BlockStmtOrExpr::BlockStmt(body) => body,
             BlockStmtOrExpr::Expr(e) => BlockStmt {
@@ -79,8 +92,7 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
                 ..BlockStmt::dummy()
             },
         };
-        
-        
+
         if closure_generator.size() > 0 {
             let variables = closure_generator.get_variables();
             let mut vars = variables.iter().collect::<Vec<_>>();
@@ -125,7 +137,6 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
             body.stmts = vec![s, old];
         };
 
-
         let transformed_function = FnExpr {
             ident: Some(fn_name),
             function: Function {
@@ -135,32 +146,32 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
             },
             ..FnExpr::dummy()
         };
-        return "".to_owned();
-        // let mut buf = vec![];
-        // {
-        //     let wr = Box::new(swc_ecma_codegen::text_writer::JsWriter::new(
-        //         Default::default(),
-        //         "", //"\n",
-        //         &mut buf,
-        //         None,
-        //     )) as Box<dyn WriteJs>;
 
-        //     let mut emitter = Emitter {
-        //         cfg: swc_ecma_codegen::Config {
-        //             minify: true,
-        //             ..Default::default()
-        //         },
-        //         comments: Default::default(),
-        //         cm: self.source_map.clone(),
-        //         wr,
-        //     };
+        let mut buf = vec![];
+        {
+            let wr = Box::new(swc_ecma_codegen::text_writer::JsWriter::new(
+                Default::default(),
+                "", //"\n",
+                &mut buf,
+                None,
+            )) as Box<dyn WriteJs>;
 
-        //     transformed_function
-        //         .emit_with(&mut emitter)
-        //         .ok()
-        //         .expect("Should emit");
-        // }
-        // String::from_utf8(buf).expect("invalid utf8 character detected")
+            let mut emitter = Emitter {
+                cfg: swc_ecma_codegen::Config {
+                    minify: true,
+                    ..Default::default()
+                },
+                comments: Default::default(),
+                cm: self.source_map.clone(),
+                wr,
+            };
+
+            transformed_function
+                .emit_with(&mut emitter)
+                .ok()
+                .expect("Should emit");
+        }
+        String::from_utf8(buf).expect("invalid utf8 character detected")
     }
 
     /// Actual fn to generate AST for worklet-ized function to be called across
@@ -201,7 +212,7 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
         // https://github.com/software-mansion/react-native-reanimated/blob/b4ee4ea9a1f246c461dd1819c6f3d48440a25756/plugin.js#L367-L371=
         let mut preprocessors: Vec<Box<dyn VisitMut>> = vec![
             Box::new(shorthand()),
-            Box::new(arrow()),
+            Box::new(arrow(Mark::fresh(Mark::root()))),
             Box::new(optional_chaining(Default::default())),
             Box::new(nullish_coalescing(Default::default())),
             Box::new(template_literal(Default::default())),
@@ -227,10 +238,14 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
         let location_ident = Ident::new("__location".into(), DUMMY_SP);
         let optimalization_ident = Ident::new("__optimalization".into(), DUMMY_SP);
 
-        let func_string =
-            self.build_worklet_string(function_name.clone(), cloned, closure_ident.clone(), closure_generator);
+        let func_string = self.build_worklet_string(
+            function_name.clone(),
+            cloned,
+            closure_ident.clone(),
+            closure_generator,
+        );
         let func_hash = calculate_hash(&func_string);
-        
+
         // Naive approach to calcuate relative path from options.
         // Note this relies on plugin config option (relative_cwd) to pass specific cwd.
         // unlike original babel plugin, we can't calculate cwd inside of plugin.
@@ -250,9 +265,8 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
             self.filename.to_string()
         };
 
-        
-        //let loc = self.source_map.lookup_char_pos(span.lo);
-        let code_location = format!("{} ({}:{})", filename_str, 0, 0);
+        let loc = self.source_map.lookup_char_pos(span.lo);
+        let code_location = format!("{} ({}:{})", filename_str, loc.line, loc.col_display);
 
         // TODO: need to use closuregenerator
 
