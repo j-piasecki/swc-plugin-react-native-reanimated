@@ -1,15 +1,11 @@
 use std::path::PathBuf;
 
 use serde_json::Value;
-use swc_core::{
+use swc_plugin::{
     ast::*,
-    common::FileName,
-    plugin::{
-        metadata::TransformPluginMetadataContextKind, metadata::TransformPluginProgramMetadata,
-        plugin_transform,
-    },
-    visit::as_folder,
-    visit::FoldWith,
+    metadata::{TransformPluginMetadataContextKind, TransformPluginProgramMetadata},
+    plugin_transform,
+    source_map::FileName,
 };
 use swc_reanimated_worklets_visitor::{create_worklets_visitor, WorkletsOptions};
 

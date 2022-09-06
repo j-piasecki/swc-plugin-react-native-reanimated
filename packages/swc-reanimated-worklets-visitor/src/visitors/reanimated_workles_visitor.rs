@@ -147,31 +147,32 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
             ..FnExpr::dummy()
         };
 
-        let mut buf = vec![];
-        {
-            let wr = Box::new(swc_ecma_codegen::text_writer::JsWriter::new(
-                Default::default(),
-                "", //"\n",
-                &mut buf,
-                None,
-            )) as Box<dyn WriteJs>;
+        "".to_owned()
+        // let mut buf = vec![];
+        // {
+        //     let wr = Box::new(swc_ecma_codegen::text_writer::JsWriter::new(
+        //         Default::default(),
+        //         "", //"\n",
+        //         &mut buf,
+        //         None,
+        //     )) as Box<dyn WriteJs>;
 
-            let mut emitter = Emitter {
-                cfg: swc_ecma_codegen::Config {
-                    minify: true,
-                    ..Default::default()
-                },
-                comments: Default::default(),
-                cm: self.source_map.clone(),
-                wr,
-            };
+        //     let mut emitter = Emitter {
+        //         cfg: swc_ecma_codegen::Config {
+        //             minify: true,
+        //             ..Default::default()
+        //         },
+        //         comments: Default::default(),
+        //         cm: self.source_map.clone(),
+        //         wr,
+        //     };
 
-            transformed_function
-                .emit_with(&mut emitter)
-                .ok()
-                .expect("Should emit");
-        }
-        String::from_utf8(buf).expect("invalid utf8 character detected")
+        //     transformed_function
+        //         .emit_with(&mut emitter)
+        //         .ok()
+        //         .expect("Should emit");
+        // }
+        // String::from_utf8(buf).expect("invalid utf8 character detected")
     }
 
     /// Actual fn to generate AST for worklet-ized function to be called across
@@ -265,8 +266,8 @@ impl<C: Clone + swc_common::comments::Comments, S: swc_common::SourceMapper + So
             self.filename.to_string()
         };
 
-        let loc = self.source_map.lookup_char_pos(span.lo);
-        let code_location = format!("{} ({}:{})", filename_str, loc.line, loc.col_display);
+        // let loc = self.source_map.lookup_char_pos(span.lo);
+        let code_location = format!("{} ({}:{})", filename_str, 0, 0);
 
         // TODO: need to use closuregenerator
 
